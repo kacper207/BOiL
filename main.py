@@ -175,8 +175,9 @@ class TransportApp(tk.Tk):
         self.m_var = tk.IntVar(value=2)
         self.n_var = tk.IntVar(value=3)
         self.blocked_cells = set()
+        self.real_m = None
+        self.real_n = None
         self._build_ui()
-
 
     def _lbl(self, parent, text, ft="small", fg=None, bg=None, **kw):
         return tk.Label(parent, text=text, font=self.ft[ft],
@@ -205,7 +206,6 @@ class TransportApp(tk.Tk):
         for j in range(n):
             self._lbl(parent, f"O{j+1}", bg=hbg, fg=head_fg,
                       ft="header", width=label_w).grid(row=row, column=j+col_offset, padx=1, pady=1)
-
 
     def _build_ui(self):
         hdr = tk.Frame(self, bg=C["bg"])
@@ -308,6 +308,8 @@ class TransportApp(tk.Tk):
                   self.kz_frame_inner, self.cs_frame_inner):
             for w in f.winfo_children(): w.destroy()
         self.blocked_cells.clear()
+        self.real_m = None
+        self.real_n = None
         self._update_blocked_label()
 
         m, n = self.m_var.get(), self.n_var.get()
@@ -434,8 +436,12 @@ class TransportApp(tk.Tk):
             "cs":        [self.cs_vars[j].get() for j in range(n)],
             "blocked":   list(self.blocked_cells),
         }
+        self.real_m = m
+        self.real_n = n
         self.m_var.set(m+1); self.n_var.set(n+1)
         self._rebuild_matrix()
+        self.real_m = m
+        self.real_n = n
 
         for i in range(m):
             self.supply_vars[i].set(str(supply[i]))
@@ -501,8 +507,8 @@ class TransportApp(tk.Tk):
         allocation, opt_iters = optimize_allocation(allocation, cost, self.blocked_cells, m, n)
         self._display_results(m, n, supply, demand, cost, allocation,
                               iterations, opt_iters, total_profit(allocation, cost),
-                              kz, cs, kt, has_kz_cs)
-
+                              kz, cs, kt, has_kz_cs,
+                              self.real_m, self.real_n)
 
     def _cell_label(self, parent, text, row, col, width=9, height=1,
                     bg=None, fg=None, ft="small"):
@@ -535,8 +541,12 @@ class TransportApp(tk.Tk):
                           fg=C["green"], ft="small").grid(row=i+1, column=n+1, padx=1, pady=1)
 
     def _display_results(self, m, n, supply, demand, cost, allocation,
-                         iterations, opt_iters, tc, kz, cs, kt, has_kz_cs):
+                         iterations, opt_iters, tc, kz, cs, kt, has_kz_cs,
+                         real_m=None, real_n=None):
         for w in self.result_inner.winfo_children(): w.destroy()
+
+        rm = real_m if real_m is not None else m
+        rn = real_n if real_n is not None else n
 
         if has_kz_cs:
             self._section(self.result_inner, "Macierz zyskow jednostkowych (Zij = Csj - Ktij - Kzi)")
@@ -685,12 +695,26 @@ class TransportApp(tk.Tk):
 
         if has_kz_cs:
             tk.Frame(cost_frame, bg="#1a3050", height=2).pack(fill="x", pady=10)
-            kcz = sum(allocation[i][j]*kz[i] for i in range(m) for j in range(n)
-                      if allocation[i][j]>0 and (i,j) not in self.blocked_cells)
-            kct = sum(allocation[i][j]*kt[i][j] for i in range(m) for j in range(n)
-                      if allocation[i][j]>0 and (i,j) not in self.blocked_cells)
-            przychod = sum(allocation[i][j]*cs[j] for i in range(m) for j in range(n)
-                           if allocation[i][j]>0 and (i,j) not in self.blocked_cells)
+
+            kcz = sum(
+                allocation[i][j] * kz[i]
+                for i in range(rm)
+                for j in range(rn)
+                if allocation[i][j] > 0 and (i,j) not in self.blocked_cells
+            )
+            kct = sum(
+                allocation[i][j] * kt[i][j]
+                for i in range(rm)
+                for j in range(rn)
+                if allocation[i][j] > 0 and (i,j) not in self.blocked_cells
+            )
+            przychod = sum(
+                allocation[i][j] * cs[j]
+                for i in range(rm)
+                for j in range(rn)
+                if allocation[i][j] > 0 and (i,j) not in self.blocked_cells
+            )
+
             for label, val, fg in [
                 ("Calkowity koszt zakupu (Kcz):",       kcz,             C["yellow"]),
                 ("Calkowite koszty transportu (Kct):",  kct,             "#b0bcd4"),
